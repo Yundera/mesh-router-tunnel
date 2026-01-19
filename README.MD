@@ -203,6 +203,12 @@ services:
 
 It is recommended to set up Cloudflare for TLS management and DDoS protection. The provider container will use a self-signed certificate for end-to-end encryption.
 
+# Alternative
+
+Tailscale Funnel
+Cloudflare Tunnels
+https://github.com/hintjen/selfhosted-gateway : Docker native self-hosted alternative to Cloudflare Tunnels, Tailscale Funnel, ngrok and others.
+
 # Development
 
 To start development, use the scripts in `./dev-scripts/windows/simple` folder,
