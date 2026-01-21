@@ -46,3 +46,4 @@ build
 .ipdr
 dist
 .claude/settings.local.json
+CLAUDE.md

@@ -59,8 +59,8 @@ Once all containers are running, you can access the CasaOS dashboard through eit
 - Networks: pcs, provider
 - Environment variables:
     - PROVIDER: http://dprovider,dev
-    - DEFAULT_HOST: casaos
-    - DEFAULT_HOST_PORT: 8080
+    - ROUTING_TARGET_HOST: casaos
+    - ROUTING_TARGET_PORT: 8080
 
 ### CasaOS Container
 - Name: casa-os-dev
