@@ -1,7 +1,7 @@
 
-[![Build and Push Docker Image](https://github.com/Yundera/mesh-router/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Yundera/mesh-router/actions/workflows/docker-publish.yml)
+[![Build and Push Docker Image](https://github.com/Yundera/mesh-router-tunnel/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Yundera/mesh-router-tunnel/actions/workflows/docker-publish.yml)
 
-# MeshRouter
+# MeshRouter Tunnel
 
 ## Sponsor
 Thanks for sponsoring this project
@@ -73,16 +73,43 @@ Example: `nextcloud.mynas.nsl.sh` or `nextcloud-mynas.nsl.sh`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROVIDER` | - | Provider connection string: `<url>,<userId>,<signature>` |
+| `PROVIDER` | - | Provider connection string: `<url>,<userId>,<signature>` (for single provider setup) |
 | `ROUTING_TARGET_HOST` | `caddy` | Target container hostname for traffic forwarding |
 | `ROUTING_TARGET_PORT` | `80` | Target container port |
+
+### YAML Configuration (Multi-Provider)
+
+For advanced setups with multiple providers, use a YAML configuration file mounted at `/app/config/config.yml`:
+
+```yaml
+providers:
+  - provider: https://nsl.sh,userId,signature
+    defaultService: casaos
+  - provider: http://custom-provider.com,userId2
+    defaultService: myapp
+    services:
+      myapp:
+        defaultPort: '3000'
+```
+
+The configuration file is watched for changes and will automatically reconnect to providers when modified.
+
+### Connection Health Monitoring
+
+The requester automatically monitors WireGuard handshakes every 5 minutes. If a connection becomes stale (no handshake within 5 minutes), it will:
+1. Log the connection issue
+2. Tear down the WireGuard interface
+3. Re-register with the provider
+4. Re-establish the tunnel
+
+This ensures resilient connections without manual intervention.
 
 ### Docker Compose Example
 
 ```yaml
 services:
   mesh-router:
-    image: mesh-router:latest
+    image: ghcr.io/yundera/mesh-router-tunnel:latest
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -168,20 +195,51 @@ Provider mode is used on public servers to accept incoming VPN connections.
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `PROVIDER_ANNONCE_DOMAIN` | Domain to announce (e.g., `nsl.sh`) |
-| `AUTH_API_URL` | URL for user authentication API |
-| `VPN_IP_RANGE` | IP range for VPN clients (e.g., `10.77.0.0/16`) |
-| `VPN_PORT` | WireGuard port (default: `51820`) |
-| `VPN_ENDPOINT_ANNOUNCE` | Public endpoint for VPN connections |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROVIDER_ANNONCE_DOMAIN` | - | Domain to announce (e.g., `nsl.sh`) - presence of this variable enables provider mode |
+| `AUTH_API_URL` | - | URL for user authentication API (optional) |
+| `VPN_IP_RANGE` | `10.77.0.0/16` | IP range for VPN clients |
+| `VPN_PORT` | `51820` | WireGuard listen port |
+| `VPN_ENDPOINT_ANNOUNCE` | - | Public endpoint for VPN connections (IP or hostname) |
+| `SSL` | `false` | Enable HTTPS with self-signed certificate on port 443 |
+
+### Provider API Endpoints
+
+The provider exposes an internal API on port 3000 (used by Nginx for routing):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ping` | GET | Health check - returns `ok` |
+| `/api/get_ip/<host>` | GET | Resolves domain to backend VPN IP for routing |
+| `/api/register` | POST | Peer registration endpoint for requesters |
+
+**Registration Request Body:**
+```json
+{
+  "userId": "username",
+  "vpnPublicKey": "WireGuard public key",
+  "authToken": "signature or auth token"
+}
+```
+
+**Registration Response:**
+```json
+{
+  "wgConfig": { "interface": {...}, "peers": [...] },
+  "serverIp": "10.77.0.1",
+  "serverDomain": "nsl.sh",
+  "domainName": "username",
+  "domain": "username.nsl.sh"
+}
+```
 
 ### Docker Compose Example
 
 ```yaml
 services:
   routing:
-    image: mesh-router:latest
+    image: ghcr.io/yundera/mesh-router-tunnel:latest
     ports:
       - "80:80"
       - "443:443"
