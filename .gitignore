@@ -47,3 +47,4 @@ build
 dist
 .claude/settings.local.json
 CLAUDE.md
+.pnpm-store
