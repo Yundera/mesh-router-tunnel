@@ -8,6 +8,7 @@ import {HandshakesWatcher} from './HandshakesWatcher.js';
 import {getConfigPath} from "./WireGuard.js";
 import {ProviderTools, registerProvider, waitForProvider} from "./ProviderTools.js";
 import {getOrGenerateKeyPair} from "./KeyPair.js";
+import {registerTunnelRoute, startRouteRefreshLoop, stopRouteRefreshLoop} from "./RouteRegistrar.js";
 
 const exec = promisify(execCallback);
 
@@ -74,6 +75,10 @@ async function stopRequester(providerString: string) {
   try {
     const [providerURL] = providerString.split(',');
     console.log(`Stopping requester for ${providerURL}`);
+
+    // Stop route refresh loop
+    stopRouteRefreshLoop(providerString);
+
     const configPath = await getConfigPath(providerURL);
 
     // Bring down the interface if it exists
@@ -138,6 +143,21 @@ async function startRequester(provider:ProviderTools) {
     } catch (error) {
       console.error(result);
       console.error(`Error executing ping: ${error.message}`);
+    }
+
+    // Register tunnel route with mesh-router-backend (v2 API)
+    // This allows the gateway to route traffic through this tunnel
+    const routeResult = await registerTunnelRoute(provider.provider, 443);
+    if (routeResult.success) {
+      console.log(`Tunnel route registered successfully`);
+      if (routeResult.domain) {
+        console.log(`  Domain: ${routeResult.domain}`);
+      }
+      // Start route refresh loop to keep the route alive
+      startRouteRefreshLoop(provider.provider, 443);
+    } else if (routeResult.error) {
+      console.warn(`Tunnel route registration failed: ${routeResult.error}`);
+      // Don't exit - tunnel still works, just no route failover support
     }
   } catch (err) {
     console.error(err);
