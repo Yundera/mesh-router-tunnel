@@ -24,11 +24,9 @@ interface EnvConfig {
     ROUTING_TARGET_HOST: string;
     /** [requester] Routing target port */
     ROUTING_TARGET_PORT: string;
-    /** [requester]  provider connexion string <url>,<userid>,<secret> */
+    /** [requester] Provider connection string <backend_url>,<userid>,<signature> */
     PROVIDER: string;
 
-    /** [requester] Backend URL for route registration (v2 API) */
-    BACKEND_URL: string;
     /** [requester] Route priority for tunnel routes (default: 2, lower than direct) */
     ROUTE_PRIORITY: number;
     /** [requester] Route refresh interval in seconds (default: 300 = 5 minutes) */
@@ -37,6 +35,15 @@ interface EnvConfig {
     HEALTH_CHECK_PATH: string;
     /** [requester] Optional health check Host header override */
     HEALTH_CHECK_HOST: string;
+}
+
+/**
+ * Parsed provider configuration
+ */
+export interface ProviderConfig {
+    backendUrl: string;
+    userId: string;
+    signature: string;
 }
 
 export interface HealthCheckConfig {
@@ -59,12 +66,35 @@ export const config: EnvConfig = {
     ROUTING_TARGET_PORT: process.env.ROUTING_TARGET_PORT || "80",
     PROVIDER: process.env.PROVIDER!,
     // Route registration config (v2 API)
-    BACKEND_URL: process.env.BACKEND_URL || '',
     ROUTE_PRIORITY: parseInt(process.env.ROUTE_PRIORITY || '2', 10),
     ROUTE_REFRESH_INTERVAL: parseInt(process.env.ROUTE_REFRESH_INTERVAL || '300', 10),
     HEALTH_CHECK_PATH: process.env.HEALTH_CHECK_PATH || '',
     HEALTH_CHECK_HOST: process.env.HEALTH_CHECK_HOST || '',
 };
+
+/**
+ * Parse PROVIDER string into components
+ * Format: <backend_url>,<userid>,<signature>
+ */
+export function parseProvider(providerString: string): ProviderConfig {
+    if (!providerString) {
+        throw new Error('PROVIDER environment variable is required');
+    }
+
+    const [backendUrl, userId, signature] = providerString.split(',');
+
+    if (!backendUrl || !userId || !signature) {
+        throw new Error(
+            'Invalid PROVIDER format. Expected: <backend_url>,<userid>,<signature>'
+        );
+    }
+
+    if (!backendUrl.startsWith('http')) {
+        throw new Error('PROVIDER backend_url must start with http:// or https://');
+    }
+
+    return { backendUrl, userId, signature };
+}
 
 /**
  * Build health check config from environment if configured

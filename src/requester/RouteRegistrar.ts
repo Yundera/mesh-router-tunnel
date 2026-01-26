@@ -1,6 +1,6 @@
 import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
-import { config, getHealthCheckConfig, HealthCheckConfig } from '../common/EnvConfig.js';
+import { config, getHealthCheckConfig, HealthCheckConfig, parseProvider, ProviderConfig } from '../common/EnvConfig.js';
 
 const exec = promisify(execCallback);
 
@@ -19,54 +19,54 @@ export interface RouteRegistrationResult {
     error?: string;
 }
 
-interface ProviderInfo {
-    providerUrl: string;
-    userId: string;
-    signature: string;
-}
-
 // Store active route refresh intervals
 const refreshIntervals = new Map<string, NodeJS.Timeout>();
 
+// Cached parsed provider config
+let cachedProvider: ProviderConfig | null = null;
+
 /**
- * Parse provider string into components
+ * Get parsed provider config (cached)
  */
-function parseProviderString(providerString: string): ProviderInfo {
-    const [providerUrl, userId = '', signature = ''] = providerString.split(',');
-    return { providerUrl, userId, signature };
+function getProvider(): ProviderConfig | null {
+    if (cachedProvider) {
+        return cachedProvider;
+    }
+
+    if (!config.PROVIDER) {
+        return null;
+    }
+
+    try {
+        cachedProvider = parseProvider(config.PROVIDER);
+        return cachedProvider;
+    } catch (error) {
+        console.error('[RouteRegistrar] Failed to parse PROVIDER:', error);
+        return null;
+    }
 }
 
 /**
  * Register tunnel route with mesh-router-backend
  * POST /router/api/routes/:userid/:sig { routes: Route[] }
- * @param providerString - Provider connection string
  * @param tunnelPort - Port for the tunnel route (from provider response)
  * @param routeIp - IP for the route (provider's internal gateway IP)
  */
 export async function registerTunnelRoute(
-    providerString: string,
     tunnelPort: number,
     routeIp: string
 ): Promise<RouteRegistrationResult> {
-    const backendUrl = config.BACKEND_URL;
+    const provider = getProvider();
 
-    if (!backendUrl) {
-        console.log('[RouteRegistrar] BACKEND_URL not configured, skipping route registration');
+    if (!provider) {
+        console.log('[RouteRegistrar] PROVIDER not configured, skipping route registration');
         return {
             success: true,
-            message: 'Route registration skipped (no BACKEND_URL)',
+            message: 'Route registration skipped (no PROVIDER)',
         };
     }
 
-    const { providerUrl, userId, signature } = parseProviderString(providerString);
-
-    if (!userId || !signature) {
-        return {
-            success: false,
-            message: 'Route registration failed',
-            error: 'Missing userId or signature in provider string',
-        };
-    }
+    const { backendUrl, userId, signature } = provider;
 
     try {
         const healthCheck = getHealthCheckConfig();
@@ -113,54 +113,44 @@ export async function registerTunnelRoute(
     }
 }
 
-/**
- * Start the route refresh loop for a provider
- */
-export function startRouteRefreshLoop(providerString: string, tunnelPort: number, routeIp: string): void {
-    // Stop any existing refresh loop for this provider
-    stopRouteRefreshLoop(providerString);
+// Store the active refresh interval
+let refreshInterval: NodeJS.Timeout | null = null;
 
-    if (!config.BACKEND_URL) {
-        console.log('[RouteRegistrar] BACKEND_URL not configured, not starting refresh loop');
+/**
+ * Start the route refresh loop
+ */
+export function startRouteRefreshLoop(tunnelPort: number, routeIp: string): void {
+    // Stop any existing refresh loop
+    stopRouteRefreshLoop();
+
+    const provider = getProvider();
+    if (!provider) {
+        console.log('[RouteRegistrar] PROVIDER not configured, not starting refresh loop');
         return;
     }
 
-    const refreshInterval = config.ROUTE_REFRESH_INTERVAL * 1000;
+    const intervalMs = config.ROUTE_REFRESH_INTERVAL * 1000;
     console.log(`[RouteRegistrar] Starting route refresh loop (interval: ${config.ROUTE_REFRESH_INTERVAL}s)`);
 
-    const interval = setInterval(async () => {
+    refreshInterval = setInterval(async () => {
         try {
-            const result = await registerTunnelRoute(providerString, tunnelPort, routeIp);
+            const result = await registerTunnelRoute(tunnelPort, routeIp);
             if (!result.success) {
                 console.error(`[RouteRegistrar] Route refresh failed: ${result.error}`);
             }
         } catch (error) {
             console.error('[RouteRegistrar] Route refresh error:', error);
         }
-    }, refreshInterval);
-
-    refreshIntervals.set(providerString, interval);
+    }, intervalMs);
 }
 
 /**
- * Stop the route refresh loop for a provider
+ * Stop the route refresh loop
  */
-export function stopRouteRefreshLoop(providerString: string): void {
-    const interval = refreshIntervals.get(providerString);
-    if (interval) {
-        clearInterval(interval);
-        refreshIntervals.delete(providerString);
+export function stopRouteRefreshLoop(): void {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
         console.log('[RouteRegistrar] Stopped route refresh loop');
     }
-}
-
-/**
- * Stop all route refresh loops
- */
-export function stopAllRouteRefreshLoops(): void {
-    for (const [providerString, interval] of refreshIntervals) {
-        clearInterval(interval);
-        console.log(`[RouteRegistrar] Stopped route refresh loop for ${providerString.split(',')[0]}`);
-    }
-    refreshIntervals.clear();
 }
