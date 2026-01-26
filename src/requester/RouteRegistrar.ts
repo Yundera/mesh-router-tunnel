@@ -37,42 +37,16 @@ function parseProviderString(providerString: string): ProviderInfo {
 }
 
 /**
- * Extract the provider's public IP from the provider URL
- * The provider URL format is typically: https://provider.domain.com:port
- * We need to resolve this to get the actual IP, or use the VPN_ENDPOINT_ANNOUNCE if available
- */
-async function getProviderPublicIp(providerUrl: string): Promise<string> {
-    // Extract hostname from URL
-    const url = new URL(providerUrl);
-    const hostname = url.hostname;
-
-    // If it's already an IP, return it
-    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)) {
-        return hostname;
-    }
-
-    // Try to resolve the hostname to an IP
-    try {
-        const { stdout } = await exec(`getent hosts ${hostname} | awk '{ print $1 }' | head -1`);
-        const ip = stdout.trim();
-        if (ip) {
-            return ip;
-        }
-    } catch {
-        // Fall through to use hostname
-    }
-
-    // Return hostname if we can't resolve (gateway will resolve it)
-    return hostname;
-}
-
-/**
  * Register tunnel route with mesh-router-backend
  * POST /router/api/routes/:userid/:sig { routes: Route[] }
+ * @param providerString - Provider connection string
+ * @param tunnelPort - Port for the tunnel route (from provider response)
+ * @param routeIp - IP for the route (provider's internal gateway IP)
  */
 export async function registerTunnelRoute(
     providerString: string,
-    tunnelPort: number = 443
+    tunnelPort: number,
+    routeIp: string
 ): Promise<RouteRegistrationResult> {
     const backendUrl = config.BACKEND_URL;
 
@@ -95,12 +69,10 @@ export async function registerTunnelRoute(
     }
 
     try {
-        // Get the provider's public IP (this is where the gateway will route traffic)
-        const providerIp = await getProviderPublicIp(providerUrl);
         const healthCheck = getHealthCheckConfig();
 
         const route: Route = {
-            ip: providerIp,
+            ip: routeIp,
             port: tunnelPort,
             priority: config.ROUTE_PRIORITY,
         };
@@ -124,7 +96,7 @@ export async function registerTunnelRoute(
             };
         }
 
-        console.log(`[RouteRegistrar] Route registered: ${providerIp}:${tunnelPort} (priority: ${config.ROUTE_PRIORITY})`);
+        console.log(`[RouteRegistrar] Route registered: ${routeIp}:${tunnelPort} (priority: ${config.ROUTE_PRIORITY})`);
 
         return {
             success: true,
@@ -144,7 +116,7 @@ export async function registerTunnelRoute(
 /**
  * Start the route refresh loop for a provider
  */
-export function startRouteRefreshLoop(providerString: string, tunnelPort: number = 443): void {
+export function startRouteRefreshLoop(providerString: string, tunnelPort: number, routeIp: string): void {
     // Stop any existing refresh loop for this provider
     stopRouteRefreshLoop(providerString);
 
@@ -158,7 +130,7 @@ export function startRouteRefreshLoop(providerString: string, tunnelPort: number
 
     const interval = setInterval(async () => {
         try {
-            const result = await registerTunnelRoute(providerString, tunnelPort);
+            const result = await registerTunnelRoute(providerString, tunnelPort, routeIp);
             if (!result.success) {
                 console.error(`[RouteRegistrar] Route refresh failed: ${result.error}`);
             }

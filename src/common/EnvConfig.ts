@@ -13,6 +13,10 @@ interface EnvConfig {
     VPN_ENDPOINT_ANNOUNCE: string;
     /** [provider] Provider announcement domain */
     PROVIDER_ANNONCE_DOMAIN: string;
+    /** [provider] Route IP for requesters to register (provider's internal gateway IP) */
+    PROVIDER_ROUTE_IP: string;
+    /** [provider] Route port for requesters to register (provider's listening port, default: 80) */
+    PROVIDER_ROUTE_PORT: number;
 
     /** **/
 
@@ -49,6 +53,8 @@ export const config: EnvConfig = {
     VPN_PORT: process.env.VPN_PORT,
     VPN_ENDPOINT_ANNOUNCE: process.env.VPN_ENDPOINT_ANNOUNCE!,
     PROVIDER_ANNONCE_DOMAIN: process.env.PROVIDER_ANNONCE_DOMAIN!,
+    PROVIDER_ROUTE_IP: process.env.PROVIDER_ROUTE_IP || '',
+    PROVIDER_ROUTE_PORT: parseInt(process.env.PROVIDER_ROUTE_PORT || '80', 10),
     ROUTING_TARGET_HOST: process.env.ROUTING_TARGET_HOST || "caddy",
     ROUTING_TARGET_PORT: process.env.ROUTING_TARGET_PORT || "80",
     PROVIDER: process.env.PROVIDER!,

@@ -6,6 +6,7 @@ import cors from 'cors';
 import axios from 'axios';
 import {VPNManager} from './VPNManager.js';
 import {registerRecvDTO, registerSendDTO, verifyRecvDTO} from '../common/dto.js';
+import {config} from '../common/EnvConfig.js';
 
 export interface ApiServerConfig {
     authApiUrl?: string,
@@ -51,13 +52,17 @@ export class ApiServer {
             domain = `${serverData.domainName}.${serverData.serverDomain}`;
         }
 
-        return {
+        const result: registerRecvDTO = {
             wgConfig: wgconfig,
             serverIp: this.vpnManager.getServerIp(),
             serverDomain: serverData.serverDomain,
             domainName: serverData.domainName,
             domain: domain,
+            routeIp: config.PROVIDER_ROUTE_IP,
+            routePort: config.PROVIDER_ROUTE_PORT,
         };
+
+        return result;
     }
 
     async startProvider() {

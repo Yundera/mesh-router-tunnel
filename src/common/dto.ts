@@ -12,6 +12,10 @@ export interface registerRecvDTO {
   serverDomain: string;
   domainName: string;
   domain: string;
+  /** IP for tunnel route registration (provider's internal gateway IP) */
+  routeIp: string;
+  /** Port for tunnel route registration (provider's listening port) */
+  routePort: number;
 }
 
 export interface verifyRecvDTO {

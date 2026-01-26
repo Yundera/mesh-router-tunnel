@@ -147,14 +147,14 @@ async function startRequester(provider:ProviderTools) {
 
     // Register tunnel route with mesh-router-backend (v2 API)
     // This allows the gateway to route traffic through this tunnel
-    const routeResult = await registerTunnelRoute(provider.provider, 443);
+    const routeResult = await registerTunnelRoute(provider.provider, result.routePort, result.routeIp);
     if (routeResult.success) {
       console.log(`Tunnel route registered successfully`);
       if (routeResult.domain) {
         console.log(`  Domain: ${routeResult.domain}`);
       }
       // Start route refresh loop to keep the route alive
-      startRouteRefreshLoop(provider.provider, 443);
+      startRouteRefreshLoop(provider.provider, result.routePort, result.routeIp);
     } else if (routeResult.error) {
       console.warn(`Tunnel route registration failed: ${routeResult.error}`);
       // Don't exit - tunnel still works, just no route failover support
