@@ -1,22 +1,42 @@
-this folder is used to test the dual-provider configuration
+# Dual-Provider Development Environment
 
-to use this configuration run
-run-dual-provider-requester-dev.ps1
+This folder is used to test the multi-provider configuration where a requester connects to multiple providers simultaneously.
 
-then go to http://dev.test2.localhost:8080/#/login
-and http://dev.test.localhost/#/login
+## Usage
 
-you should see the same casaos login page on both domains
+Run the dual-provider requester development script:
 
+```powershell
+.\run-dual-provider-requester-dev.ps1
+```
 
-sample configuration for nsl.sh and custom domain
+## Test URLs
+
+Once running, you should be able to access the same CasaOS login page on both domains:
+
+- http://dev.test2.localhost:8080/#/login
+- http://dev.test.localhost/#/login
+
+## Sample Configuration
+
+Example `config.yml` for connecting to multiple providers:
+
 ```yaml
 providers:
-- provider: https://nsl.sh,EkGcLEimm9TIa5TdketObbnbRQ52@nasselle.com,k1k5dy2ydthiaa4zpp3skaydo1dmcoovqi3ahlckiundmc5k0jv753m4c4adfu4i9rqmesfzba5o7czapiksualxfg9kvhd49ekg
-  defaultService: casaos
-- provider: http://mesh-router-domain,wiseferret
-  defaultService: casaos
-  services:
-  casaos:
-  defaultPort: '8080'
+  # NSL.sh provider (production example)
+  - provider: https://api.nsl.sh,<userid>,<signature>
+    defaultService: casaos
+
+  # Custom domain provider (local example)
+  - provider: http://mesh-router-domain,<userid>
+    defaultService: casaos
+    services:
+      casaos:
+        defaultPort: '8080'
 ```
+
+## Notes
+
+- Replace `<userid>` and `<signature>` with your actual credentials
+- The sample credentials in scripts are examples only - do not use in production
+- This configuration enables failover between multiple tunnel providers
