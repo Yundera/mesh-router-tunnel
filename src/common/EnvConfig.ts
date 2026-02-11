@@ -35,6 +35,8 @@ interface EnvConfig {
     HEALTH_CHECK_PATH: string;
     /** [requester] Optional health check Host header override */
     HEALTH_CHECK_HOST: string;
+    /** [requester] Provider retry interval in seconds when version check fails (default: 600 = 10 minutes) */
+    PROVIDER_RETRY_INTERVAL: number;
 }
 
 /**
@@ -70,6 +72,7 @@ export const config: EnvConfig = {
     ROUTE_REFRESH_INTERVAL: parseInt(process.env.ROUTE_REFRESH_INTERVAL || '300', 10),
     HEALTH_CHECK_PATH: process.env.HEALTH_CHECK_PATH || '',
     HEALTH_CHECK_HOST: process.env.HEALTH_CHECK_HOST || '',
+    PROVIDER_RETRY_INTERVAL: parseInt(process.env.PROVIDER_RETRY_INTERVAL || '600', 10),
 };
 
 /**

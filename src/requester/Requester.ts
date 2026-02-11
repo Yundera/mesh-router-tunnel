@@ -6,7 +6,8 @@ import {promisify} from 'util';
 import {Config} from "./RequesterConfig.js";
 import {HandshakesWatcher} from './HandshakesWatcher.js';
 import {getConfigPath} from "./WireGuard.js";
-import {ProviderTools, registerProvider, waitForProvider} from "./ProviderTools.js";
+import {ProviderTools, registerProvider, waitForProvider, checkProviderVersion} from "./ProviderTools.js";
+import {config} from "../common/EnvConfig.js";
 import {getOrGenerateKeyPair} from "./KeyPair.js";
 import {registerTunnelRoute, startRouteRefreshLoop, stopRouteRefreshLoop} from "./RouteRegistrar.js";
 
@@ -103,10 +104,24 @@ async function stopRequester(providerString: string) {
 }
 
 async function startRequester(provider:ProviderTools) {
+  const [providerURL, userId = '', signature = ''] = provider.provider.split(',');
+  console.log(`Starting requester for ${providerURL}`);
+
+  // Check version FIRST (before waitForProvider)
+  console.log('Checking provider version...');
+  const versionInfo = await checkProviderVersion(providerURL);
+
+  if (!versionInfo.compatible) {
+    console.warn(`Provider version incompatible (v${versionInfo.version}). Requires v2+. ${versionInfo.error || ''}`);
+    console.warn(`Will retry in ${config.PROVIDER_RETRY_INTERVAL}s...`);
+
+    // Schedule retry
+    setTimeout(() => startRequester(provider), config.PROVIDER_RETRY_INTERVAL * 1000);
+    return;
+  }
+  console.log(`Provider version: v${versionInfo.version} (compatible)`);
 
   try {
-    const [providerURL, userId = '', signature = ''] = provider.provider.split(',');
-    console.log(`Starting requester for ${providerURL}`);
     // Wait for provider to become available
     await waitForProvider(providerURL, RETRY_INTERVAL_SECONDS);
 

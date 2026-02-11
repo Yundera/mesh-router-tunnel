@@ -85,10 +85,35 @@ export async function registerTunnelRoute(
 
         const url = `${backendUrl}/router/api/routes/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
         const jsonData = JSON.stringify({ routes: [route] }).replace(/"/g, '\\"');
-        const curlCommand = `curl -s -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
+        const curlCommand = `curl -s -w "\\n%{http_code}" -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
 
         const { stdout } = await exec(curlCommand);
-        const response = JSON.parse(stdout);
+
+        // Parse response and HTTP status code
+        const lines = stdout.trim().split('\n');
+        const httpCode = parseInt(lines.pop() || '0', 10);
+        const body = lines.join('\n');
+
+        // Check for HTTP errors
+        if (httpCode >= 400 || httpCode === 0) {
+            return {
+                success: false,
+                message: 'Route registration failed',
+                error: `HTTP ${httpCode}: Server returned an error (endpoint may not exist on this backend version)`,
+            };
+        }
+
+        // Parse JSON response
+        let response;
+        try {
+            response = JSON.parse(body);
+        } catch {
+            return {
+                success: false,
+                message: 'Route registration failed',
+                error: `Invalid JSON response from server (backend may not support routes API)`,
+            };
+        }
 
         if (response.error) {
             return {

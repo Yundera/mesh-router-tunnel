@@ -80,3 +80,35 @@ export async function waitForProvider(providerURL: string, retryIntervalSeconds:
 
   throw new Error(`Provider ${providerURL} not available after ${maxRetries} attempts`);
 }
+
+export interface ProviderVersionInfo {
+  compatible: boolean;
+  version: number;
+  error?: string;
+}
+
+/**
+ * Checks the provider backend API version for compatibility.
+ * Returns version info indicating if the backend is compatible (v2+).
+ * Used for graceful migration - clients wait if backend is outdated.
+ */
+export async function checkProviderVersion(providerURL: string): Promise<ProviderVersionInfo> {
+  try {
+    const curlCommand = `curl -s -k --max-time 10 ${providerURL}/router/api/version`;
+    const { stdout } = await execPromise(curlCommand);
+    const data = JSON.parse(stdout);
+
+    if (typeof data.version !== 'number') {
+      return { compatible: false, version: 0, error: 'Invalid version response' };
+    }
+
+    const compatible = data.version >= 2;
+    return { compatible, version: data.version };
+  } catch (error) {
+    return {
+      compatible: false,
+      version: 0,
+      error: error instanceof Error ? error.message : 'Version check failed'
+    };
+  }
+}
