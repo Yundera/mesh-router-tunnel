@@ -9,6 +9,7 @@ export interface Route {
     port: number;
     priority: number;
     healthCheck?: HealthCheckConfig;
+    source?: string;
 }
 
 export interface RouteRegistrationResult {
@@ -75,6 +76,7 @@ export async function registerTunnelRoute(
             ip: routeIp,
             port: tunnelPort,
             priority: config.ROUTE_PRIORITY,
+            source: 'tunnel',  // Source identifier for route replacement
         };
 
         if (healthCheck) {
