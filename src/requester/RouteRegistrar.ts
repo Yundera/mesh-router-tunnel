@@ -9,7 +9,7 @@ export interface Route {
     port: number;
     priority: number;
     healthCheck?: HealthCheckConfig;
-    source?: string;
+    source: string;
 }
 
 export interface RouteRegistrationResult {
