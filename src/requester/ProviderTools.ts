@@ -29,8 +29,15 @@ async function executeCurl(command: string): Promise<unknown> {
  */
 export async function registerProvider(providerURL: string, dta: registerSendDTO): Promise<registerRecvDTO> {
   try {
+    // Add clientVersion to identify as v2 client
+    // This prevents legacy mesh-router from registering with v2 providers
+    const dataWithVersion: registerSendDTO = {
+      ...dta,
+      clientVersion: 2,
+    };
+
     // Format the data as JSON
-    const jsonData = JSON.stringify(dta).replace(/"/g, '\\"');
+    const jsonData = JSON.stringify(dataWithVersion).replace(/"/g, '\\"');
 
     // Build the curl command
     const curlCommand = `curl -s -k -X POST -H "Content-Type: application/json" -d "${jsonData}" ${providerURL}/api/register`;

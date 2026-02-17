@@ -127,6 +127,20 @@ export class ApiServer {
         app.post('/api/register', async (req, res) => {
             try {
                 const data: registerSendDTO = req.body;
+
+                // Reject legacy clients (v1) that don't send clientVersion
+                // This prevents legacy mesh-router and new mesh-router-tunnel from
+                // fighting over the same peer registration with different keys
+                if (!data.clientVersion || data.clientVersion < 2) {
+                    console.warn(`Rejected registration from legacy client (version: ${data.clientVersion || 'none'}) for user: ${data.userId}`);
+                    res.status(400).json({
+                        error: 'Client version too old',
+                        message: 'This provider requires clientVersion >= 2. Please upgrade to mesh-router-tunnel v2.',
+                        requiredVersion: 2,
+                    });
+                    return;
+                }
+
                 const ret = await this.registerPeer(data);
                 res.send(ret);
             } catch (err) {

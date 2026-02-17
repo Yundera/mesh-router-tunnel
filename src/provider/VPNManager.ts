@@ -154,15 +154,26 @@ PostDown = iptables -t nat -D POSTROUTING -s ${this.ipRange} -o $(ip route | gre
   }
 
   private setWgPeer(vpnPublicKey: string, meta: Meta, uniqueIp?: string): string {
+    // Check if peer already exists with this name
+    if (this.peerMap.has(meta.name)) {
+      const existingPeer = this.peerMap.get(meta.name);
+
+      // If same public key, this is an idempotent re-registration - return existing IP
+      if (existingPeer.publicKey === vpnPublicKey) {
+        console.log(`Peer ${meta.name} re-registered with same key, keeping IP ${existingPeer.ip}`);
+        return existingPeer.ip;
+      }
+
+      // Different public key (key rotation) - remove old peer first
+      console.log(`Peer ${meta.name} key changed, rotating from old key`);
+      this.removeWgPeer(meta.name);
+    }
+
+    // Assign new IP for new peer or key rotation
     if (!uniqueIp) {
       uniqueIp = this.ipManager.getFreeIp();
     } else {
       this.ipManager.leaseIp(uniqueIp);
-    }
-
-    // If peer with this name exists, remove it first
-    if (this.peerMap.has(meta.name)) {
-      this.removeWgPeer(meta.name);
     }
 
     // Add new peer - PeerMap now handles WireGuard interface updates

@@ -4,6 +4,7 @@ export interface registerSendDTO {
     userId: string,
     vpnPublicKey: string,
     authToken: string, // userId signed by the private key
+    clientVersion?: number, // v2+ clients must send this to register with v2 providers
 }
 
 export interface registerRecvDTO {
