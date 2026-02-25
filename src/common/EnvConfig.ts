@@ -22,7 +22,11 @@ interface EnvConfig {
 
     /** [requester] Routing target host - all traffic will be forwarded to this container */
     ROUTING_TARGET_HOST: string;
-    /** [requester] Routing target port */
+    /** [requester] Routing target port for HTTPS traffic (default: 443) */
+    ROUTING_TARGET_PORT_HTTPS: number;
+    /** [requester] Routing target port for HTTP traffic (default: 80) */
+    ROUTING_TARGET_PORT_HTTP: number;
+    /** [requester] @deprecated Use ROUTING_TARGET_PORT_HTTPS instead. Kept for backward compat. */
     ROUTING_TARGET_PORT: string;
     /** [requester] Provider connection string <backend_url>,<userid>,<signature> */
     PROVIDER: string;
@@ -65,7 +69,11 @@ export const config: EnvConfig = {
     PROVIDER_ROUTE_IP: process.env.PROVIDER_ROUTE_IP || '',
     PROVIDER_ROUTE_PORT: parseInt(process.env.PROVIDER_ROUTE_PORT || '80', 10),
     ROUTING_TARGET_HOST: process.env.ROUTING_TARGET_HOST || "caddy",
-    ROUTING_TARGET_PORT: process.env.ROUTING_TARGET_PORT || "80",
+    // New dual-port config
+    ROUTING_TARGET_PORT_HTTPS: parseInt(process.env.ROUTING_TARGET_PORT_HTTPS || '443', 10),
+    ROUTING_TARGET_PORT_HTTP: parseInt(process.env.ROUTING_TARGET_PORT_HTTP || '80', 10),
+    // Legacy: ROUTING_TARGET_PORT kept for backward compat
+    ROUTING_TARGET_PORT: process.env.ROUTING_TARGET_PORT || "443",
     PROVIDER: process.env.PROVIDER!,
     // Route registration config (v2 API)
     ROUTE_PRIORITY: parseInt(process.env.ROUTE_PRIORITY || '2', 10),

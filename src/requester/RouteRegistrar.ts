@@ -8,6 +8,7 @@ export interface Route {
     ip: string;
     port: number;
     priority: number;
+    scheme?: "http" | "https";
     healthCheck?: HealthCheckConfig;
     source: string;
 }
@@ -48,14 +49,17 @@ function getProvider(): ProviderConfig | null {
 }
 
 /**
- * Register tunnel route with mesh-router-backend
+ * Register tunnel routes with mesh-router-backend
  * POST /router/api/routes/:userid/:sig { routes: Route[] }
- * @param tunnelPort - Port for the tunnel route (from provider response)
+ * Registers two routes: one for HTTPS (port from config) and one for HTTP (port 80)
+ * @param tunnelPortHttps - Port for HTTPS tunnel route (from provider response)
+ * @param tunnelPortHttp - Port for HTTP tunnel route (from provider response, default: 80)
  * @param routeIp - IP for the route (provider's internal gateway IP)
  */
 export async function registerTunnelRoute(
-    tunnelPort: number,
-    routeIp: string
+    tunnelPortHttps: number,
+    routeIp: string,
+    tunnelPortHttp: number = 80
 ): Promise<RouteRegistrationResult> {
     const provider = getProvider();
 
@@ -72,19 +76,28 @@ export async function registerTunnelRoute(
     try {
         const healthCheck = getHealthCheckConfig();
 
-        const route: Route = {
-            ip: routeIp,
-            port: tunnelPort,
-            priority: config.ROUTE_PRIORITY,
-            source: 'tunnel',  // Source identifier for route replacement
-        };
-
-        if (healthCheck) {
-            route.healthCheck = healthCheck;
-        }
+        // Build dual routes: HTTPS and HTTP
+        const routes: Route[] = [
+            {
+                ip: routeIp,
+                port: tunnelPortHttps,
+                priority: config.ROUTE_PRIORITY,
+                scheme: 'https',
+                source: 'tunnel',
+                ...(healthCheck && { healthCheck }),
+            },
+            {
+                ip: routeIp,
+                port: tunnelPortHttp,
+                priority: config.ROUTE_PRIORITY,
+                scheme: 'http',
+                source: 'tunnel',
+                // No health check for HTTP route
+            },
+        ];
 
         const url = `${backendUrl}/router/api/routes/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
-        const jsonData = JSON.stringify({ routes: [route] }).replace(/"/g, '\\"');
+        const jsonData = JSON.stringify({ routes }).replace(/"/g, '\\"');
         const curlCommand = `curl -s -w "\\n%{http_code}" -X POST -H "Content-Type: application/json" -d "${jsonData}" "${url}"`;
 
         const { stdout } = await exec(curlCommand);
@@ -123,11 +136,11 @@ export async function registerTunnelRoute(
             };
         }
 
-        console.log(`[RouteRegistrar] Route registered: ${routeIp}:${tunnelPort} (priority: ${config.ROUTE_PRIORITY})`);
+        console.log(`[RouteRegistrar] Routes registered: ${routeIp}:${tunnelPortHttps} (https), ${routeIp}:${tunnelPortHttp} (http) (priority: ${config.ROUTE_PRIORITY})`);
 
         return {
             success: true,
-            message: response.message || 'Route registered successfully',
+            message: response.message || 'Routes registered successfully',
             routes: response.routes,
             domain: response.domain,
         };
@@ -145,8 +158,11 @@ let refreshInterval: NodeJS.Timeout | null = null;
 
 /**
  * Start the route refresh loop
+ * @param tunnelPortHttps - Port for HTTPS traffic
+ * @param routeIp - IP address for the route
+ * @param tunnelPortHttp - Port for HTTP traffic (default: 80)
  */
-export function startRouteRefreshLoop(tunnelPort: number, routeIp: string): void {
+export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, tunnelPortHttp: number = 80): void {
     // Stop any existing refresh loop
     stopRouteRefreshLoop();
 
@@ -161,7 +177,7 @@ export function startRouteRefreshLoop(tunnelPort: number, routeIp: string): void
 
     refreshInterval = setInterval(async () => {
         try {
-            const result = await registerTunnelRoute(tunnelPort, routeIp);
+            const result = await registerTunnelRoute(tunnelPortHttps, routeIp, tunnelPortHttp);
             if (!result.success) {
                 console.error(`[RouteRegistrar] Route refresh failed: ${result.error}`);
             }

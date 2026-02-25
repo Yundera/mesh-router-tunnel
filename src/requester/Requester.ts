@@ -160,16 +160,18 @@ async function startRequester(provider:ProviderTools) {
       console.error(`Error executing ping: ${error.message}`);
     }
 
-    // Register tunnel route with mesh-router-backend (v2 API)
+    // Register tunnel routes with mesh-router-backend (v2 API)
     // This allows the gateway to route traffic through this tunnel
-    const routeResult = await registerTunnelRoute(result.routePort, result.routeIp);
+    // Both HTTP and HTTPS routes use the same provider routePort (VPN is protocol-agnostic)
+    // The tunnel's nginx then routes to Caddy on different ports based on X-Forwarded-Proto
+    const routeResult = await registerTunnelRoute(result.routePort, result.routeIp, result.routePort);
     if (routeResult.success) {
-      console.log(`Tunnel route registered successfully`);
+      console.log(`Tunnel routes registered successfully`);
       if (routeResult.domain) {
         console.log(`  Domain: ${routeResult.domain}`);
       }
-      // Start route refresh loop to keep the route alive
-      startRouteRefreshLoop(result.routePort, result.routeIp);
+      // Start route refresh loop to keep the routes alive
+      startRouteRefreshLoop(result.routePort, result.routeIp, result.routePort);
     } else if (routeResult.error) {
       console.warn(`Tunnel route registration failed: ${routeResult.error}`);
       // Don't exit - tunnel still works, just no route failover support
