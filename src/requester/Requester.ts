@@ -1,6 +1,7 @@
 import {WgConfig} from "wireguard-tools";
 import {registerRecvDTO} from "../common/dto.js";
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import {exec as execCallback} from 'child_process';
 import {promisify} from 'util';
 import {Config} from "./RequesterConfig.js";
@@ -81,6 +82,15 @@ async function stopRequester(providerString: string) {
     stopRouteRefreshLoop();
 
     const configPath = await getConfigPath(providerURL);
+    const interfaceName = path.basename(configPath, '.conf');
+
+    // Remove iptables rule before bringing down interface
+    try {
+      await exec(`iptables -t nat -D PREROUTING -i ${interfaceName} -p tcp --dport 80 -j REDIRECT --to-port 80`);
+      console.log(`iptables REDIRECT rule removed for interface ${interfaceName}`);
+    } catch (err) {
+      // Rule may not exist, ignore error
+    }
 
     // Bring down the interface if it exists
     try {
@@ -146,6 +156,16 @@ async function startRequester(provider:ProviderTools) {
     await config.writeToFile();
     await config.down(); // Ensure interface is down before bringing it up
     await config.up();
+
+    // Set up iptables to forward traffic from WireGuard interface to local nginx
+    // This is needed because nginx listens on container network, not WireGuard interface
+    const interfaceName = path.basename(configPath, '.conf');
+    try {
+      await exec(`iptables -t nat -A PREROUTING -i ${interfaceName} -p tcp --dport 80 -j REDIRECT --to-port 80`);
+      console.log(`iptables REDIRECT rule added for interface ${interfaceName}`);
+    } catch (error) {
+      console.error(`Failed to add iptables rule: ${error.message}`);
+    }
 
     // Test connection
     try {
