@@ -75,7 +75,8 @@ Example: `nextcloud.mynas.nsl.sh` or `nextcloud-mynas.nsl.sh`
 |----------|---------|-------------|
 | `PROVIDER` | - | Provider connection string: `<url>,<userId>,<signature>` (for single provider setup) |
 | `ROUTING_TARGET_HOST` | `caddy` | Target container hostname for traffic forwarding |
-| `ROUTING_TARGET_PORT` | `80` | Target container port |
+| `ROUTING_TARGET_PORT_HTTPS` | `443` | Target container port for HTTPS traffic |
+| `ROUTING_TARGET_PORT_HTTP` | `80` | Target container port for HTTP traffic |
 
 ### YAML Configuration (Multi-Provider)
 
@@ -119,7 +120,6 @@ services:
     environment:
       - PROVIDER=https://nsl.sh,<userId>,<signature>
       - ROUTING_TARGET_HOST=caddy
-      - ROUTING_TARGET_PORT=80
     networks:
       - pcs
     depends_on:
