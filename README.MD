@@ -51,6 +51,50 @@ MeshRouter is a WireGuard-based VPN tunneling solution that enables secure routi
 4. **Caddy**: Matches request against container labels, proxies to appropriate service
 5. **Service**: Container handles request and returns response
 
+### HTTP/HTTPS Scheme Preservation
+
+The tunnel preserves the original request scheme (HTTP vs HTTPS) throughout the entire flow:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         SCHEME PRESERVATION FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│   ENTRY (Gateway)           TUNNEL                    EXIT (Requester → Caddy)  │
+│        │                       │                              │                  │
+│   HTTP request                 │                              │                  │
+│   (port 80)                    │                              │                  │
+│        │                       │      WireGuard               │    http://       │
+│        ├──────────────────────►│◄════════════════════════════►│───────────────►  │
+│        │ X-Forwarded-Proto:    │      (encrypted)             │    caddy:80      │
+│        │ http                  │                              │                  │
+│        │                       │                              │                  │
+│   HTTPS request                │                              │                  │
+│   (port 443, SSL terminated)   │                              │                  │
+│        │                       │      WireGuard               │    https://      │
+│        ├──────────────────────►│◄════════════════════════════►│───────────────►  │
+│        │ X-Forwarded-Proto:    │      (encrypted)             │    caddy:443     │
+│        │ https                 │                              │                  │
+│                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+
+1. **Gateway terminates SSL** for HTTPS requests and sets `X-Forwarded-Proto: https` header
+2. **Tunnel entry (provider)** receives HTTP on port 80 and preserves the `X-Forwarded-Proto` header
+3. **Traffic flows through WireGuard** as HTTP (WireGuard provides network-layer encryption)
+4. **Tunnel exit (requester)** reads `X-Forwarded-Proto` and speaks the correct protocol to Caddy:
+   - `X-Forwarded-Proto: http` → `http://caddy:80`
+   - `X-Forwarded-Proto: https` → `https://caddy:443` (nginx speaks TLS to Caddy)
+
+**Why this design:**
+
+- Caddy can keep standard HTTP/HTTPS configuration without special proxy trust settings
+- The tunnel handles protocol translation transparently
+- WireGuard encrypts all internal traffic regardless of application-layer protocol
+- Scheme-aware routing ensures correct behavior for redirects, secure cookies, and HSTS
+
 ## Domain Routing
 
 The mesh-router operates in two modes:
