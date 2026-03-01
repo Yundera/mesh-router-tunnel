@@ -11,7 +11,6 @@ export interface Route {
     scheme?: "http" | "https";
     healthCheck?: HealthCheckConfig;
     source: string;
-    verify?: boolean;
 }
 
 export interface RouteRegistrationResult {
@@ -78,7 +77,7 @@ export async function registerTunnelRoute(
         const healthCheck = getHealthCheckConfig();
 
         // Build dual routes: HTTPS and HTTP
-        // verify: false skips validation since internal tunnel IPs aren't reachable from backend
+        // Backend validates tunnel IPs since it's on the same network as the tunnel provider
         const routes: Route[] = [
             {
                 ip: routeIp,
@@ -86,7 +85,6 @@ export async function registerTunnelRoute(
                 priority: config.ROUTE_PRIORITY,
                 scheme: 'https',
                 source: 'tunnel',
-                verify: false,
                 ...(healthCheck && { healthCheck }),
             },
             {
@@ -95,7 +93,6 @@ export async function registerTunnelRoute(
                 priority: config.ROUTE_PRIORITY,
                 scheme: 'http',
                 source: 'tunnel',
-                verify: false,
             },
         ];
 
