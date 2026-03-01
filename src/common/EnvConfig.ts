@@ -33,10 +33,6 @@ interface EnvConfig {
     ROUTE_PRIORITY: number;
     /** [requester] Route refresh interval in seconds (default: 300 = 5 minutes) */
     ROUTE_REFRESH_INTERVAL: number;
-    /** [requester] Optional health check HTTP path */
-    HEALTH_CHECK_PATH: string;
-    /** [requester] Optional health check Host header override */
-    HEALTH_CHECK_HOST: string;
     /** [requester] Provider retry interval in seconds when version check fails (default: 600 = 10 minutes) */
     PROVIDER_RETRY_INTERVAL: number;
 }
@@ -48,11 +44,6 @@ export interface ProviderConfig {
     backendUrl: string;
     userId: string;
     signature: string;
-}
-
-export interface HealthCheckConfig {
-    path: string;
-    host?: string;
 }
 
 /**
@@ -73,8 +64,6 @@ export const config: EnvConfig = {
     // Route registration config (v2 API)
     ROUTE_PRIORITY: parseInt(process.env.ROUTE_PRIORITY || '2', 10),
     ROUTE_REFRESH_INTERVAL: parseInt(process.env.ROUTE_REFRESH_INTERVAL || '300', 10),
-    HEALTH_CHECK_PATH: process.env.HEALTH_CHECK_PATH || '',
-    HEALTH_CHECK_HOST: process.env.HEALTH_CHECK_HOST || '',
     PROVIDER_RETRY_INTERVAL: parseInt(process.env.PROVIDER_RETRY_INTERVAL || '600', 10),
 };
 
@@ -100,18 +89,4 @@ export function parseProvider(providerString: string): ProviderConfig {
     }
 
     return { backendUrl, userId, signature };
-}
-
-/**
- * Build health check config from environment if configured
- */
-export function getHealthCheckConfig(): HealthCheckConfig | undefined {
-    if (!config.HEALTH_CHECK_PATH) {
-        return undefined;
-    }
-
-    return {
-        path: config.HEALTH_CHECK_PATH,
-        ...(config.HEALTH_CHECK_HOST && { host: config.HEALTH_CHECK_HOST }),
-    };
 }

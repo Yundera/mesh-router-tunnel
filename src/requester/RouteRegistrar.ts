@@ -1,6 +1,6 @@
 import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
-import { config, getHealthCheckConfig, HealthCheckConfig, parseProvider, ProviderConfig } from '../common/EnvConfig.js';
+import { config, parseProvider, ProviderConfig } from '../common/EnvConfig.js';
 
 const exec = promisify(execCallback);
 
@@ -8,8 +8,8 @@ export interface Route {
     ip: string;
     port: number;
     priority: number;
-    scheme?: "http" | "https";
-    healthCheck?: HealthCheckConfig;
+    scheme?: "http" | "https";       // Ingress protocol scheme - what traffic this route accepts
+    targetScheme?: "http" | "https"; // Target protocol scheme - what protocol to use when connecting to backend
     source: string;
 }
 
@@ -74,24 +74,24 @@ export async function registerTunnelRoute(
     const { backendUrl, userId, signature } = provider;
 
     try {
-        const healthCheck = getHealthCheckConfig();
-
-        // Build dual routes: HTTPS and HTTP
+        // Build dual routes: HTTPS and HTTP ingress
         // Backend validates tunnel IPs since it's on the same network as the tunnel provider
+        // targetScheme is 'http' because SSL is terminated at the gateway, and WireGuard encrypts the tunnel
         const routes: Route[] = [
             {
                 ip: routeIp,
                 port: tunnelPortHttps,
                 priority: config.ROUTE_PRIORITY,
-                scheme: 'https',
+                scheme: 'https',        // Ingress: accept HTTPS traffic
+                targetScheme: 'http',   // Target: connect to backend via HTTP
                 source: 'tunnel',
-                ...(healthCheck && { healthCheck }),
             },
             {
                 ip: routeIp,
                 port: tunnelPortHttp,
                 priority: config.ROUTE_PRIORITY,
-                scheme: 'http',
+                scheme: 'http',         // Ingress: accept HTTP traffic
+                targetScheme: 'http',   // Target: connect to backend via HTTP
                 source: 'tunnel',
             },
         ];
