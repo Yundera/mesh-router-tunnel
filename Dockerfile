@@ -1,5 +1,5 @@
 # Stage 1: Build Node.js application with pnpm
-FROM node:lts AS base
+FROM node:24 AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
@@ -7,7 +7,7 @@ ENV PATH="$PNPM_HOME:$PATH"
 RUN npm install -g corepack@latest && corepack enable
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml .npmrc /app/
+COPY package.json pnpm-lock.yaml .npmrc pnpm-workspace.yaml /app/
 
 # Install the exact pnpm version specified in package.json
 RUN corepack install

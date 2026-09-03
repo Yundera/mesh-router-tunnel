@@ -1,0 +1,7 @@
+# pnpm 11 no longer reads the "pnpm" field of package.json, nor pnpm-specific
+# keys from .npmrc — settings live here.
+#
+# shamefullyHoist mirrors `shamefully-hoist=true` in .npmrc, which pnpm 11
+# ignores *silently*: without it the image ships only the direct dependencies
+# in node_modules and transitive requires fail at runtime.
+shamefullyHoist: true
