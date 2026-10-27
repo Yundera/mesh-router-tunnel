@@ -11,6 +11,7 @@ import {ProviderTools, registerProvider, waitForProvider, checkProviderVersion} 
 import {config} from "../common/EnvConfig.js";
 import {getOrGenerateKeyPair} from "./KeyPair.js";
 import {registerTunnelRoute, startRouteRefreshLoop, stopRouteRefreshLoop} from "./RouteRegistrar.js";
+import {protectWgInterface} from "./WgFirewall.js";
 
 const exec = promisify(execCallback);
 
@@ -166,6 +167,7 @@ async function startRequester(provider:ProviderTools) {
     } catch (error) {
       console.error(`Failed to add iptables rule: ${error.message}`);
     }
+    await protectWgInterface(interfaceName);
 
     // Test connection
     try {
@@ -184,14 +186,15 @@ async function startRequester(provider:ProviderTools) {
     // This allows the gateway to route traffic through this tunnel
     // Both HTTP and HTTPS routes use the same provider routePort (VPN is protocol-agnostic)
     // The tunnel's nginx then routes to Caddy on different ports based on X-Forwarded-Proto
-    const routeResult = await registerTunnelRoute(result.routePort, result.routeIp, result.routePort);
+    const tunnelIp = (result.wgConfig.wgInterface?.address?.[0] || '').split('/')[0] || undefined;
+    const routeResult = await registerTunnelRoute(result.routePort, result.routeIp, result.routePort, tunnelIp);
     if (routeResult.success) {
       console.log(`Tunnel routes registered successfully`);
       if (routeResult.domain) {
         console.log(`  Domain: ${routeResult.domain}`);
       }
       // Start route refresh loop to keep the routes alive
-      startRouteRefreshLoop(result.routePort, result.routeIp, result.routePort);
+      startRouteRefreshLoop(result.routePort, result.routeIp, result.routePort, tunnelIp);
     } else if (routeResult.error) {
       console.warn(`Tunnel route registration failed: ${routeResult.error}`);
       // Don't exit - tunnel still works, just no route failover support

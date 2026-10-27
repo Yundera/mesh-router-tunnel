@@ -50,6 +50,7 @@ else
 
     # Substitute environment variables in the template
     envsubst '${ROUTING_TARGET_HOST} ${ROUTING_TARGET_PORT_HTTP} ${ROUTING_TARGET_PORT_HTTPS}' < /etc/nginx/conf.d/requester.conf.template > /etc/nginx/conf.d/requester.conf
+    envsubst '${ROUTING_TARGET_HOST} ${ROUTING_TARGET_PORT_HTTPS}' < /etc/nginx/requester.stream.conf.template > /etc/nginx/conf.d/requester-stream.main
 fi
 
 mkdir -p /var/log/nginx/

@@ -1,6 +1,7 @@
 import {updateRequestersFromConfig} from "./requester/Requester.js";
 import {startProvider} from "./provider/Provider.js";
 import {config} from "./common/EnvConfig.js";
+import {parseForwardFrom} from "./provider/Firewall.js";
 import {RequesterConfig} from "./requester/RequesterConfig.js";
 
 
@@ -15,6 +16,7 @@ import {RequesterConfig} from "./requester/RequesterConfig.js";
       VPNPort: config.VPN_PORT,
       VPNEndPointAnnounce: config.VPN_ENDPOINT_ANNOUNCE,
       VPNIpRange:config.VPN_IP_RANGE,
+      VPNForwardFrom: parseForwardFrom(config.TUNNEL_FORWARD_FROM),
     });
 
   } else {

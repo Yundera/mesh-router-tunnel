@@ -62,6 +62,7 @@ COPY nginx/provider/root/ /usr/share/nginx/html-provider/
 
 # Requester code
 COPY nginx/requester/requester.template.conf /etc/nginx/conf.d/requester.conf.template
+COPY nginx/requester/requester.stream.template.conf /etc/nginx/requester.stream.conf.template
 COPY nginx/requester/root/ /usr/share/nginx/html-requester/
 
 # Entrypoint script to run Certbot and start Nginx

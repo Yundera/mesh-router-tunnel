@@ -11,6 +11,7 @@ export interface Route {
     scheme?: "http" | "https";       // Ingress protocol scheme - what traffic this route accepts
     targetScheme?: "http" | "https"; // Target protocol scheme - what protocol to use when connecting to backend
     source: string;
+    tunnelIp?: string;               // This box's WireGuard address: the gateway can reach Caddy's :443 there directly
 }
 
 export interface RouteRegistrationResult {
@@ -55,11 +56,13 @@ function getProvider(): ProviderConfig | null {
  * @param tunnelPortHttps - Port for HTTPS tunnel route (from provider response)
  * @param tunnelPortHttp - Port for HTTP tunnel route (from provider response, default: 80)
  * @param routeIp - IP for the route (provider's internal gateway IP)
+ * @param tunnelIp - this box's WireGuard address, sent on the HTTPS route (routed tunnel)
  */
 export async function registerTunnelRoute(
     tunnelPortHttps: number,
     routeIp: string,
-    tunnelPortHttp: number = 80
+    tunnelPortHttp: number = 80,
+    tunnelIp?: string
 ): Promise<RouteRegistrationResult> {
     const provider = getProvider();
 
@@ -85,6 +88,9 @@ export async function registerTunnelRoute(
                 scheme: 'https',        // Ingress: accept HTTPS traffic
                 targetScheme: 'http',   // Target: connect to backend via HTTP
                 source: 'tunnel',
+                // A gateway routing the WireGuard subnet goes to tunnelIp:443 with TLS
+                // instead (older gateways ignore the field)
+                ...(tunnelIp ? { tunnelIp } : {}),
             },
             {
                 ip: routeIp,
@@ -136,7 +142,7 @@ export async function registerTunnelRoute(
             };
         }
 
-        console.log(`[RouteRegistrar] Routes registered: ${routeIp}:${tunnelPortHttps} (https), ${routeIp}:${tunnelPortHttp} (http) (priority: ${config.ROUTE_PRIORITY})`);
+        console.log(`[RouteRegistrar] Routes registered: ${routeIp}:${tunnelPortHttps} (https${tunnelIp ? `, tunnelIp ${tunnelIp}` : ''}), ${routeIp}:${tunnelPortHttp} (http) (priority: ${config.ROUTE_PRIORITY})`);
 
         return {
             success: true,
@@ -161,8 +167,9 @@ let refreshInterval: NodeJS.Timeout | null = null;
  * @param tunnelPortHttps - Port for HTTPS traffic
  * @param routeIp - IP address for the route
  * @param tunnelPortHttp - Port for HTTP traffic (default: 80)
+ * @param tunnelIp - this box's WireGuard address (routed tunnel)
  */
-export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, tunnelPortHttp: number = 80): void {
+export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, tunnelPortHttp: number = 80, tunnelIp?: string): void {
     // Stop any existing refresh loop
     stopRouteRefreshLoop();
 
@@ -177,7 +184,7 @@ export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, 
 
     refreshInterval = setInterval(async () => {
         try {
-            const result = await registerTunnelRoute(tunnelPortHttps, routeIp, tunnelPortHttp);
+            const result = await registerTunnelRoute(tunnelPortHttps, routeIp, tunnelPortHttp, tunnelIp);
             if (!result.success) {
                 console.error(`[RouteRegistrar] Route refresh failed: ${result.error}`);
             }

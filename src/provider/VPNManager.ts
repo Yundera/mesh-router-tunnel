@@ -4,6 +4,7 @@ import {promises as fs} from 'fs';
 import {promisify} from 'util';
 import path from 'path';
 import { PeerMap } from './PeerMap.js';
+import { applyFirewall } from './Firewall.js';
 
 const execAsync = promisify(exec);
 
@@ -26,6 +27,8 @@ export interface VPNManagerConfig {
   VPNPort?: string;
   VPNEndPointAnnounce?: string;
   VPNIpRange?: string;
+  /** Addresses allowed to reach the peers' tcp/443 through wg0 (the gateways) */
+  VPNForwardFrom?: string[];
   announcedDomain: string;
 }
 
@@ -76,6 +79,7 @@ export class VPNManager {
     }
 
     await this.startWireGuard();
+    await applyFirewall(this.ipRange, config.VPNForwardFrom || []);
   }
 
   private async ensureDirectoryExists(): Promise<void> {
@@ -93,6 +97,7 @@ export class VPNManager {
     try {
       existingConfig = await fs.readFile(this.WG_CONFIG_PATH, 'utf-8');
       console.log('Found existing WireGuard configuration');
+      existingConfig = await this.stripHooks(existingConfig);
     } catch {
       console.log('No existing WireGuard configuration found');
     }
@@ -133,8 +138,6 @@ SaveConfig = true
 ListenPort = ${this.vpnPort}
 PrivateKey = ${this.serverPrivateKey}
 
-PostUp = iptables -t nat -A POSTROUTING -s ${this.ipRange} -o $(ip route | grep default | awk '{print $5}') -j MASQUERADE; iptables -A INPUT -p udp -m udp --dport ${this.vpnPort} -j ACCEPT; iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT;
-PostDown = iptables -t nat -D POSTROUTING -s ${this.ipRange} -o $(ip route | grep default | awk '{print $5}') -j MASQUERADE; iptables -D INPUT -p udp -m udp --dport ${this.vpnPort} -j ACCEPT; iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT;
 
 # Peers list
 `;
@@ -142,6 +145,19 @@ PostDown = iptables -t nat -D POSTROUTING -s ${this.ipRange} -o $(ip route | gre
     await fs.writeFile(this.WG_CONFIG_PATH, config);
     process.env.SERVER_WG_PUBLIC_KEY = this.serverPublicKey;
     console.log(`Created new config with public key: ${this.serverPublicKey}`);
+  }
+
+  /**
+   * Drop PostUp/PostDown from a persisted config: configs created before 1.4 carry hooks
+   * that open forwarding for every peer. The firewall is applied from code instead.
+   */
+  private async stripHooks(existingConfig: string): Promise<string> {
+    const stripped = existingConfig.replace(/^\s*(PostUp|PostDown)\s*=.*(\r?\n|$)/gm, '');
+    if (stripped !== existingConfig) {
+      await fs.writeFile(this.WG_CONFIG_PATH, stripped);
+      console.log('Removed PostUp/PostDown hooks from the existing WireGuard configuration');
+    }
+    return stripped;
   }
 
   private async startWireGuard(): Promise<void> {
@@ -212,7 +228,7 @@ PostDown = iptables -t nat -D POSTROUTING -s ${this.ipRange} -o $(ip route | gre
       peers: [
         {
           publicKey: this.serverPublicKey,
-          allowedIps: [this.ipRange],
+          allowedIps: [`${this.serverIp}/32`],
           endpoint: this.vpnEndpointAnnounce,
           persistentKeepalive: 60,
         }]
