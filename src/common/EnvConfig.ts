@@ -19,6 +19,8 @@ interface EnvConfig {
     PROVIDER_ROUTE_PORT: number;
     /** [provider] Comma-separated IPs/CIDRs (the gateways) allowed to reach the peers' tcp/443 through the tunnel; empty = none */
     TUNNEL_FORWARD_FROM: string;
+    /** [provider] Gateways on other hosts, as wg0 peers: `<public key>@<ip in VPN_IP_RANGE>`, comma-separated; they forward like TUNNEL_FORWARD_FROM */
+    TUNNEL_GATEWAY_PEERS: string;
 
     /** **/
 
@@ -60,6 +62,7 @@ export const config: EnvConfig = {
     PROVIDER_ROUTE_IP: process.env.PROVIDER_ROUTE_IP || '',
     PROVIDER_ROUTE_PORT: parseInt(process.env.PROVIDER_ROUTE_PORT || '80', 10),
     TUNNEL_FORWARD_FROM: process.env.TUNNEL_FORWARD_FROM || '',
+    TUNNEL_GATEWAY_PEERS: process.env.TUNNEL_GATEWAY_PEERS || '',
     ROUTING_TARGET_HOST: process.env.ROUTING_TARGET_HOST || "caddy",
     ROUTING_TARGET_PORT_HTTPS: parseInt(process.env.ROUTING_TARGET_PORT_HTTPS || '443', 10),
     ROUTING_TARGET_PORT_HTTP: parseInt(process.env.ROUTING_TARGET_PORT_HTTP || '80', 10),

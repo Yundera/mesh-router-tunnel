@@ -22,9 +22,6 @@ export interface RouteRegistrationResult {
     error?: string;
 }
 
-// Store active route refresh intervals
-const refreshIntervals = new Map<string, NodeJS.Timeout>();
-
 // Cached parsed provider config
 let cachedProvider: ProviderConfig | null = null;
 
@@ -49,21 +46,57 @@ function getProvider(): ProviderConfig | null {
     }
 }
 
+/** One provider's tunnel, as the box registers it. */
+export interface Tunnel {
+    routeIp: string;     // the provider's internal address (its nginx, plain HTTP path)
+    routePort: number;
+    tunnelIp?: string;   // this box's WireGuard address on that provider
+}
+
+// Every connected provider's tunnel, by provider URL. The backend keeps one route list per
+// source and a POST replaces it, so all providers' routes go in one registration.
+const tunnels = new Map<string, Tunnel>();
+
+/** This tunnel's two routes (HTTPS and HTTP ingress). */
+function tunnelRoutes(t: Tunnel): Route[] {
+    // targetScheme is 'http' because SSL is terminated at the gateway, and WireGuard encrypts the tunnel.
+    // tunnelIp on both: a gateway routing the WireGuard subnet goes to tunnelIp:443 with TLS
+    // for HTTPS, and tells by it which provider (subnet) a route belongs to, so it never
+    // picks another host's provider address (older gateways ignore the field)
+    const common = {
+        ip: t.routeIp,
+        port: t.routePort,
+        priority: config.ROUTE_PRIORITY,
+        targetScheme: 'http' as const,
+        source: 'tunnel',
+        ...(t.tunnelIp ? { tunnelIp: t.tunnelIp } : {}),
+    };
+    return [
+        { ...common, scheme: 'https' },  // Ingress: accept HTTPS traffic
+        { ...common, scheme: 'http' },   // Ingress: accept HTTP traffic
+    ];
+}
+
+/** Add or replace a provider's tunnel, then register every tunnel's routes. */
+export async function setTunnel(providerURL: string, tunnel: Tunnel): Promise<RouteRegistrationResult> {
+    tunnels.set(providerURL, tunnel);
+    return registerTunnelRoutes();
+}
+
+/** Drop a provider's tunnel, then register the remaining ones. */
+export async function removeTunnel(providerURL: string): Promise<void> {
+    if (!tunnels.delete(providerURL)) return;
+    const result = await registerTunnelRoutes();
+    if (!result.success) console.error(`[RouteRegistrar] Route update after removing ${providerURL} failed: ${result.error}`);
+}
+
 /**
- * Register tunnel routes with mesh-router-backend
+ * Register every connected provider's tunnel routes with mesh-router-backend
  * POST /router/api/routes/:userid/:sig { routes: Route[] }
- * Registers two routes: one for HTTPS (port from config) and one for HTTP (port 80)
- * @param tunnelPortHttps - Port for HTTPS tunnel route (from provider response)
- * @param tunnelPortHttp - Port for HTTP tunnel route (from provider response, default: 80)
- * @param routeIp - IP for the route (provider's internal gateway IP)
- * @param tunnelIp - this box's WireGuard address, sent on the HTTPS route (routed tunnel)
+ * Two routes per provider: HTTPS and HTTP ingress. No tunnel: nothing is sent, the
+ * previous registration expires with its TTL.
  */
-export async function registerTunnelRoute(
-    tunnelPortHttps: number,
-    routeIp: string,
-    tunnelPortHttp: number = 80,
-    tunnelIp?: string
-): Promise<RouteRegistrationResult> {
+export async function registerTunnelRoutes(): Promise<RouteRegistrationResult> {
     const provider = getProvider();
 
     if (!provider) {
@@ -73,34 +106,15 @@ export async function registerTunnelRoute(
             message: 'Route registration skipped (no PROVIDER)',
         };
     }
+    if (tunnels.size === 0) {
+        return { success: true, message: 'No tunnel to register' };
+    }
 
     const { backendUrl, userId, signature } = provider;
 
     try {
-        // Build dual routes: HTTPS and HTTP ingress
         // Backend validates tunnel IPs since it's on the same network as the tunnel provider
-        // targetScheme is 'http' because SSL is terminated at the gateway, and WireGuard encrypts the tunnel
-        const routes: Route[] = [
-            {
-                ip: routeIp,
-                port: tunnelPortHttps,
-                priority: config.ROUTE_PRIORITY,
-                scheme: 'https',        // Ingress: accept HTTPS traffic
-                targetScheme: 'http',   // Target: connect to backend via HTTP
-                source: 'tunnel',
-                // A gateway routing the WireGuard subnet goes to tunnelIp:443 with TLS
-                // instead (older gateways ignore the field)
-                ...(tunnelIp ? { tunnelIp } : {}),
-            },
-            {
-                ip: routeIp,
-                port: tunnelPortHttp,
-                priority: config.ROUTE_PRIORITY,
-                scheme: 'http',         // Ingress: accept HTTP traffic
-                targetScheme: 'http',   // Target: connect to backend via HTTP
-                source: 'tunnel',
-            },
-        ];
+        const routes: Route[] = [...tunnels.values()].flatMap(tunnelRoutes);
 
         const url = `${backendUrl}/router/api/routes/${encodeURIComponent(userId)}/${encodeURIComponent(signature)}`;
         const jsonData = JSON.stringify({ routes }).replace(/"/g, '\\"');
@@ -142,7 +156,9 @@ export async function registerTunnelRoute(
             };
         }
 
-        console.log(`[RouteRegistrar] Routes registered: ${routeIp}:${tunnelPortHttps} (https${tunnelIp ? `, tunnelIp ${tunnelIp}` : ''}), ${routeIp}:${tunnelPortHttp} (http) (priority: ${config.ROUTE_PRIORITY})`);
+        const summary = [...tunnels.values()]
+            .map(t => `${t.routeIp}:${t.routePort}${t.tunnelIp ? ` (tunnelIp ${t.tunnelIp})` : ''}`).join(', ');
+        console.log(`[RouteRegistrar] Routes registered for ${tunnels.size} provider(s): ${summary} (https + http, priority: ${config.ROUTE_PRIORITY})`);
 
         return {
             success: true,
@@ -159,19 +175,12 @@ export async function registerTunnelRoute(
     }
 }
 
-// Store the active refresh interval
+// The one refresh loop, for all tunnels
 let refreshInterval: NodeJS.Timeout | null = null;
 
-/**
- * Start the route refresh loop
- * @param tunnelPortHttps - Port for HTTPS traffic
- * @param routeIp - IP address for the route
- * @param tunnelPortHttp - Port for HTTP traffic (default: 80)
- * @param tunnelIp - this box's WireGuard address (routed tunnel)
- */
-export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, tunnelPortHttp: number = 80, tunnelIp?: string): void {
-    // Stop any existing refresh loop
-    stopRouteRefreshLoop();
+/** Start the route refresh loop if it is not running (it keeps every tunnel's routes alive). */
+export function ensureRouteRefreshLoop(): void {
+    if (refreshInterval) return;
 
     const provider = getProvider();
     if (!provider) {
@@ -184,7 +193,7 @@ export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, 
 
     refreshInterval = setInterval(async () => {
         try {
-            const result = await registerTunnelRoute(tunnelPortHttps, routeIp, tunnelPortHttp, tunnelIp);
+            const result = await registerTunnelRoutes();
             if (!result.success) {
                 console.error(`[RouteRegistrar] Route refresh failed: ${result.error}`);
             }
@@ -194,9 +203,7 @@ export function startRouteRefreshLoop(tunnelPortHttps: number, routeIp: string, 
     }, intervalMs);
 }
 
-/**
- * Stop the route refresh loop
- */
+/** Stop the route refresh loop */
 export function stopRouteRefreshLoop(): void {
     if (refreshInterval) {
         clearInterval(refreshInterval);

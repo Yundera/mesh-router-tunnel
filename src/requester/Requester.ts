@@ -8,9 +8,9 @@ import {Config} from "./RequesterConfig.js";
 import {HandshakesWatcher} from './HandshakesWatcher.js';
 import {getConfigPath} from "./WireGuard.js";
 import {ProviderTools, registerProvider, waitForProvider, checkProviderVersion} from "./ProviderTools.js";
-import {config} from "../common/EnvConfig.js";
+import {config, parseProvider} from "../common/EnvConfig.js";
 import {getOrGenerateKeyPair} from "./KeyPair.js";
-import {registerTunnelRoute, startRouteRefreshLoop, stopRouteRefreshLoop} from "./RouteRegistrar.js";
+import {ensureRouteRefreshLoop, removeTunnel, setTunnel, stopRouteRefreshLoop} from "./RouteRegistrar.js";
 import {protectWgInterface} from "./WgFirewall.js";
 
 const exec = promisify(execCallback);
@@ -53,11 +53,12 @@ export async function updateRequestersFromConfig(config: Config) {
     }
   }
 
-  // Start new providers that aren't already running
+  // Start new providers that aren't already running. Not awaited one after the other: a
+  // provider that is down waits (and retries) on its own without holding up the others.
   for (const provider of config.providers) {
     if (!activeProviders.has(provider.provider)) {
-      await startRequester(provider);
       activeProviders.add(provider.provider);
+      startRequester(provider).catch((err) => console.error(`Requester for ${provider.provider} failed:`, err));
 
       const [providerURL] = provider.provider.split(',');
       watcher.addProvider(provider.provider, {
@@ -79,8 +80,9 @@ async function stopRequester(providerString: string) {
     const [providerURL] = providerString.split(',');
     console.log(`Stopping requester for ${providerURL}`);
 
-    // Stop route refresh loop
-    stopRouteRefreshLoop();
+    // Its routes go, the other providers' stay registered
+    await removeTunnel(providerURL);
+    if (activeProviders.size === 0) stopRouteRefreshLoop();
 
     const configPath = await getConfigPath(providerURL);
     const interfaceName = path.basename(configPath, '.conf');
@@ -114,13 +116,27 @@ async function stopRequester(providerString: string) {
   }
 }
 
+/** True for the provider in the box's own PROVIDER string (the backend's host). */
+function isPrimary(providerURL: string): boolean {
+  try {
+    return !!config.PROVIDER && parseProvider(config.PROVIDER).backendUrl === providerURL;
+  } catch {
+    return false;
+  }
+}
+
 async function startRequester(provider:ProviderTools) {
   const [providerURL, userId = '', signature = ''] = provider.provider.split(',');
   console.log(`Starting requester for ${providerURL}`);
 
-  // Check version FIRST (before waitForProvider)
+  // Check version FIRST (before waitForProvider), on the backend: a provider on another
+  // host (TUNNEL_PROVIDERS) serves only the registration API
   console.log('Checking provider version...');
-  const versionInfo = await checkProviderVersion(providerURL);
+  let versionURL = providerURL;
+  try {
+    if (config.PROVIDER) versionURL = parseProvider(config.PROVIDER).backendUrl;
+  } catch { /* keep providerURL */ }
+  const versionInfo = await checkProviderVersion(versionURL);
 
   if (!versionInfo.compatible) {
     console.warn(`Provider version incompatible (v${versionInfo.version}). Requires v2+. ${versionInfo.error || ''}`);
@@ -187,20 +203,29 @@ async function startRequester(provider:ProviderTools) {
     // Both HTTP and HTTPS routes use the same provider routePort (VPN is protocol-agnostic)
     // The tunnel's nginx then routes to Caddy on different ports based on X-Forwarded-Proto
     const tunnelIp = (result.wgConfig.wgInterface?.address?.[0] || '').split('/')[0] || undefined;
-    const routeResult = await registerTunnelRoute(result.routePort, result.routeIp, result.routePort, tunnelIp);
+    const routeResult = await setTunnel(providerURL, {routeIp: result.routeIp, routePort: result.routePort, tunnelIp});
+    // Keep every provider's routes alive (one loop for all)
+    ensureRouteRefreshLoop();
     if (routeResult.success) {
       console.log(`Tunnel routes registered successfully`);
       if (routeResult.domain) {
         console.log(`  Domain: ${routeResult.domain}`);
       }
-      // Start route refresh loop to keep the routes alive
-      startRouteRefreshLoop(result.routePort, result.routeIp, result.routePort, tunnelIp);
     } else if (routeResult.error) {
       console.warn(`Tunnel route registration failed: ${routeResult.error}`);
       // Don't exit - tunnel still works, just no route failover support
     }
   } catch (err) {
     console.error(err);
-    process.exit(51);
+    if (isPrimary(providerURL)) {
+      process.exit(51);
+    }
+    // Another host's provider: retry later, the box's own tunnel keeps running
+    console.warn(`Requester for ${providerURL} failed, retrying in ${config.PROVIDER_RETRY_INTERVAL}s`);
+    setTimeout(() => {
+      if (activeProviders.has(provider.provider)) {
+        startRequester(provider).catch((e) => console.error(`Requester for ${providerURL} failed:`, e));
+      }
+    }, config.PROVIDER_RETRY_INTERVAL * 1000);
   }
 }

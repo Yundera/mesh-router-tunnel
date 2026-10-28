@@ -60,6 +60,27 @@ export function parseForwardFrom(value: string | undefined): string[] {
     .filter(s => /^[0-9.]+(\/\d{1,2})?$/.test(s));
 }
 
+export interface GatewayPeer {
+  publicKey: string;
+  ip: string;
+}
+
+/**
+ * TUNNEL_GATEWAY_PEERS: gateways on other hosts that reach the boxes through this
+ * provider, as `<wireguard public key>@<address in VPN_IP_RANGE>`, comma-separated. Each
+ * is pinned as a wg0 peer and allowed to forward like TUNNEL_FORWARD_FROM. Malformed
+ * entries are dropped with a warning.
+ */
+export function parseGatewayPeers(value: string | undefined): GatewayPeer[] {
+  const peers: GatewayPeer[] = [];
+  for (const entry of (value || '').split(',').map(s => s.trim()).filter(Boolean)) {
+    const m = entry.match(/^([A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=)@(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (m) peers.push({publicKey: m[1], ip: m[2]});
+    else console.warn(`[gateway-peers] ignored malformed entry '${entry}' (want <public key>@<ip>)`);
+  }
+  return peers;
+}
+
 export async function applyFirewall(ipRange: string, forwardFrom: string[]): Promise<void> {
   await removeLegacyRules(ipRange);
 

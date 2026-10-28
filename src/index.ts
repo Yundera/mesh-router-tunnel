@@ -1,8 +1,9 @@
 import {updateRequestersFromConfig} from "./requester/Requester.js";
 import {startProvider} from "./provider/Provider.js";
-import {config} from "./common/EnvConfig.js";
-import {parseForwardFrom} from "./provider/Firewall.js";
+import {config, parseProvider} from "./common/EnvConfig.js";
+import {parseForwardFrom, parseGatewayPeers} from "./provider/Firewall.js";
 import {RequesterConfig} from "./requester/RequesterConfig.js";
+import {fetchTunnelProviders, withDiscovered} from "./requester/ProviderDiscovery.js";
 
 
 (async () => {
@@ -17,6 +18,7 @@ import {RequesterConfig} from "./requester/RequesterConfig.js";
       VPNEndPointAnnounce: config.VPN_ENDPOINT_ANNOUNCE,
       VPNIpRange:config.VPN_IP_RANGE,
       VPNForwardFrom: parseForwardFrom(config.TUNNEL_FORWARD_FROM),
+      VPNGatewayPeers: parseGatewayPeers(config.TUNNEL_GATEWAY_PEERS),
     });
 
   } else {
@@ -28,12 +30,33 @@ import {RequesterConfig} from "./requester/RequesterConfig.js";
         provider: config.PROVIDER,
       }],
     });
+    // Providers on other hosts, listed by the backend (/version tunnelProviders): added to
+    // the file's, refreshed every ROUTE_REFRESH_INTERVAL. A backend that can't answer keeps
+    // the current list.
+    let discovered: string[] = [];
+    const effective = () => withDiscovered(rconfig.getConfig(), discovered, config.PROVIDER || '');
     rconfig.watchConfig();// will watch the file for changes
     rconfig.on('configUpdated', async (newConfig) => {
       console.log('Config updated:', newConfig);
-      await updateRequestersFromConfig(rconfig.getConfig());
+      await updateRequestersFromConfig(effective());
     });
-    await updateRequestersFromConfig(rconfig.getConfig());
+    const discover = async () => {
+      if (!config.PROVIDER) return;
+      let backendUrl: string;
+      try {
+        backendUrl = parseProvider(config.PROVIDER).backendUrl;
+      } catch {
+        return;
+      }
+      const list = await fetchTunnelProviders(backendUrl);
+      if (list === null || list.join(' ') === discovered.join(' ')) return;
+      console.log(`Tunnel providers from the backend: ${list.length ? list.join(', ') : '(none)'}`);
+      discovered = list;
+      await updateRequestersFromConfig(effective());
+    };
+    await updateRequestersFromConfig(effective());
+    await discover();
+    setInterval(() => discover().catch(console.error), config.ROUTE_REFRESH_INTERVAL * 1000);
   }
 
 })().catch(console.error);
