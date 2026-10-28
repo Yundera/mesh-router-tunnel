@@ -249,7 +249,6 @@ Provider mode is used on public servers to accept incoming VPN connections.
 | `SSL` | `false` | Enable HTTPS with self-signed certificate on port 443 |
 | `TUNNEL_FORWARD_FROM` | - | Comma-separated IPs/CIDRs (the gateways on this host) allowed to reach the peers' tcp/443 through `wg0` (routed tunnel); masqueraded to the provider's address |
 | `PROVIDER_API_TLS_PORT` | - | Also serve the registration API (`/api/`) over TLS (self-signed) on this port, for a provider without a reverse proxy in front, e.g. on a second gateway's host. Port 80 is unchanged. Requesters reach it through the backend's `TUNNEL_PROVIDERS` list (`https://<host>:<port>`) |
-| `TUNNEL_GATEWAY_PEERS` | - | Gateways on **other** hosts, as `<wireguard public key>@<ip in VPN_IP_RANGE>`, comma-separated (pick addresses at the top of the range, e.g. `10.78.255.254`). Each is pinned as a `wg0` peer named `gateway:<ip>`, its address is never leased to a box, and it forwards like `TUNNEL_FORWARD_FROM`. Removing an entry removes the peer at the next start. The gateway's host dials `VPN_ENDPOINT_ANNOUNCE:VPN_PORT` and routes the tunnel subnet into that link (see mesh-router-nameserver `docs/multi-gateway.md`) |
 
 ### Provider API Endpoints
 

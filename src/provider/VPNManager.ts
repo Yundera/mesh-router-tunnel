@@ -4,11 +4,9 @@ import {promises as fs} from 'fs';
 import {promisify} from 'util';
 import path from 'path';
 import { PeerMap } from './PeerMap.js';
-import { applyFirewall, GatewayPeer } from './Firewall.js';
+import { applyFirewall } from './Firewall.js';
 
 const execAsync = promisify(exec);
-
-const GATEWAY_PEER_PREFIX = 'gateway:';
 
 export interface Meta {
   name: string;
@@ -31,8 +29,6 @@ export interface VPNManagerConfig {
   VPNIpRange?: string;
   /** Addresses allowed to reach the peers' tcp/443 through wg0 (the gateways) */
   VPNForwardFrom?: string[];
-  /** Gateways on other hosts, pinned as wg0 peers and allowed to forward like VPNForwardFrom */
-  VPNGatewayPeers?: GatewayPeer[];
   announcedDomain: string;
 }
 
@@ -83,39 +79,7 @@ export class VPNManager {
     }
 
     await this.startWireGuard();
-    const gatewayIps = this.syncGatewayPeers(config.VPNGatewayPeers || []);
-    await applyFirewall(this.ipRange, [...(config.VPNForwardFrom || []), ...gatewayIps]);
-  }
-
-  /**
-   * Make the gateway peers (named `gateway:<ip>`) exactly the configured ones: add or
-   * re-key the listed, remove the ones no longer listed. A listed address already held by
-   * a box is refused (logged), never taken over. Returns the addresses now pinned.
-   */
-  private syncGatewayPeers(peers: GatewayPeer[]): string[] {
-    const wanted = new Map(peers.map(p => [`${GATEWAY_PEER_PREFIX}${p.ip}`, p]));
-    for (const [name] of this.peerMap.getAll()) {
-      if (name.startsWith(GATEWAY_PEER_PREFIX) && !wanted.has(name)) {
-        this.removeWgPeer(name);
-        console.log(`[gateway-peers] removed ${name} (no longer in TUNNEL_GATEWAY_PEERS)`);
-      }
-    }
-    const pinned: string[] = [];
-    for (const [name, p] of wanted) {
-      const holder = [...this.peerMap.getAll()].find(([n, peer]) => peer.ip === p.ip && n !== name);
-      if (holder) {
-        console.error(`[gateway-peers] ${p.ip} is held by peer ${holder[0]}: gateway peer not added`);
-        continue;
-      }
-      try {
-        this.setWgPeer(p.publicKey, {name}, p.ip);
-        pinned.push(p.ip);
-        console.log(`[gateway-peers] ${name} pinned (${p.publicKey})`);
-      } catch (e) {
-        console.error(`[gateway-peers] ${name}: ${(e as Error).message}`);
-      }
-    }
-    return pinned;
+    await applyFirewall(this.ipRange, config.VPNForwardFrom || []);
   }
 
   private async ensureDirectoryExists(): Promise<void> {

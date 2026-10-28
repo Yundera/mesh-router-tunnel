@@ -1,7 +1,7 @@
 import {updateRequestersFromConfig} from "./requester/Requester.js";
 import {startProvider} from "./provider/Provider.js";
 import {config, parseProvider} from "./common/EnvConfig.js";
-import {parseForwardFrom, parseGatewayPeers} from "./provider/Firewall.js";
+import {parseForwardFrom} from "./provider/Firewall.js";
 import {RequesterConfig} from "./requester/RequesterConfig.js";
 import {fetchTunnelProviders, withDiscovered} from "./requester/ProviderDiscovery.js";
 
@@ -18,7 +18,6 @@ import {fetchTunnelProviders, withDiscovered} from "./requester/ProviderDiscover
       VPNEndPointAnnounce: config.VPN_ENDPOINT_ANNOUNCE,
       VPNIpRange:config.VPN_IP_RANGE,
       VPNForwardFrom: parseForwardFrom(config.TUNNEL_FORWARD_FROM),
-      VPNGatewayPeers: parseGatewayPeers(config.TUNNEL_GATEWAY_PEERS),
     });
 
   } else {
